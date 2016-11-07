@@ -6,7 +6,8 @@
 import tensorflow as tf
 from tensorflow.nn.rnn_cell import GRUCell, DropoutWrapper, MultiRNNCell
 
-main()
+def main():
+    pass
 
 
 class MemNet():
@@ -21,13 +22,12 @@ class MemNet():
     def generate_dnn_layer(self, encoded):
         pass
 
-    def generate_rnn_layer(self, inputs):
+    def generate_rnn_layer(self, batch, num_sentences, word_vector_length, max_length):
         '''
             rnn layer encodes facts and qeustions
             inputs is in dimension:
                 batch_size * num_sentences * word_vector_length * max_length
         '''
-        batch, num_sentences, word_vector_length, max_length = inputs.shape
         cell = GRUCell(num_sentences)
         cell = DropoutWrapper(cell, output_keep_prob = self.dropout)
         encoder = MultiRNNCell([cell] * self.depth_rnn)
