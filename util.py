@@ -55,9 +55,9 @@ def input_data_parser(lang, size, task):
     if size != '1k' and size != '10k' and size != None:
         raise Exception("Data size must be 1k or 10k. None specified is considered 10k.")
     if size == '10k':
-        data_path = lang + '-10k'
+        data_path = data_base + lang + '-10k'
     else:
-        data_path = lang
+        data_path = data_base + lang
 
     if task in task_dict:
         return parse[task](data_path)
