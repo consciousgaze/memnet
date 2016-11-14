@@ -27,7 +27,7 @@ def vocabulary(text):
     word_to_idx = {}
     idx_to_word = {}
     for idx, word in enumerate(words):
-        word_to_idx[word] = idx
+        word_to_idx[word] = [idx]
         idx_to_word[idx] = word
     return word_to_idx, idx_to_word
 
