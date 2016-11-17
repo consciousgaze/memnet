@@ -3,6 +3,8 @@ from parsers import *
 
 data_base = 'data/tasks_1-20_v1-2/'
 
+SEN_STOP = '-1'
+
 task_dict = {
               1: "single-supporting-fact",
               2: "two-supporting-facts",

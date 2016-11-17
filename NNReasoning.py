@@ -67,7 +67,7 @@ class MemNet():
         '''
             fact_num is the number of fact sentences
             input_dimension is:
-                batch * sentence length * word vector size
+                batch * sentence_length * word vector size
         '''
         encoder = self.generate_encoder(fact_num + 1, input_dimension)
         inputs = []
@@ -84,15 +84,15 @@ class MemNet():
 
         for layer in range(self.num_reasoning):
             with tf.variable_scope('reasoning_layer_' + str(layer)) as scope:
-                print question
                 question, facts = self.generate_resaoner(question, facts)
-        return inputs, question
+        answer = self.generate_decoder(question)
+        return inputs, answer
 
-    def generate_rnn_layer(self):
+    def generate_rnn_layer(self, unit_size):
         '''
             rnn layer for encoder layer
         '''
-        cell = tf.nn.rnn_cell.GRUCell(self.unit_size)
+        cell = tf.nn.rnn_cell.GRUCell(unit_size)
         cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob = self.dropout)
         layer = tf.nn.rnn_cell.MultiRNNCell([cell] * self.depth_rnn)
         return layer
@@ -107,7 +107,7 @@ class MemNet():
         for _ in range(num_sentence):
             with tf.variable_scope("fact_" + str(_)) as scope:
                 tmp = tf.placeholder(tf.float64, shape = input_shape)
-                layer = self.generate_rnn_layer()
+                layer = self.generate_rnn_layer(self.unit_size)
                 output, last_state = tf.nn.dynamic_rnn(
                                             cell = layer,
                                             dtype = tf.float64,
@@ -133,7 +133,25 @@ class MemNet():
                 qs.append(q)
                 fs.append(f)
         question = tf.concat(1, qs)
+        question = tf.nn.avg_pool(question, [1, 5, 1, 1], [1, 5, 1, 1], padding = 'SAME')
         return (question, fs)
+
+    def generate_decoder(self, content):
+        '''
+            content is of shape
+                batch * content dimension * 1 * 1
+        '''
+        # convert to shape batch * sequence * content dimension
+        content = tf.expand_dims(content[:, :, 0, 0], 1)
+        # append null inputs until it reaches sentence length limit
+        batch, _, content_length =  content.get_shape()
+        content = tf.concat(1, [content, tf.zeros([batch, 8, content_length], dtype = tf.float64)])
+        # feed in rnn to get a sentence
+        layer = self.generate_rnn_layer(1)
+        output, last_state = tf.nn.dynamic_rnn(cell = layer,
+                                               dtype = tf.float64,
+                                               inputs = content)
+        return output
 
 if __name__ == '__main__':
     main()
