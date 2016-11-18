@@ -11,9 +11,9 @@ from util import *
 def main():
     net = MemNet(10, 4, 20, 10, 0.3)
     w2i, i2w, train, test = input_data_parser('en', '1k', 19)
-    fact = net.process_data(train[0])
-    input_dimension = np.asarray(fact[0]).shape
-    print net.get_model(5, input_dimension)
+    x, y = train
+    sentence_num, batch_size, sentence_length, word_vector_size = x.shape
+    print net.get_model(sentence_num - 1, [batch_size, sentence_length, word_vector_size])
     return
 
 class MemNet():
@@ -31,23 +31,6 @@ class MemNet():
             with self.graph.as_default():
                 self.filter = tf.random_normal([3, 1, 1, 1], dtype = tf.float64)
         self.strides = [1, 1, 1, 1]
-
-
-    def process_data(self, train):
-        f1 = []
-        f2 = []
-        f3 = []
-        f4 = []
-        f5 = []
-        q = []
-        for d in train:
-            f1.append(d[0][:9])
-            f2.append(d[1][:9])
-            f3.append(d[2][:9])
-            f4.append(d[3][:9])
-            f5.append(d[4][:9])
-            q.append(d[5][:9])
-        return f1, f2, f3, f4, f5, q
 
     def expand_sentence_tensor(self, sentence):
         '''
@@ -85,7 +68,7 @@ class MemNet():
         for layer in range(self.num_reasoning):
             with tf.variable_scope('reasoning_layer_' + str(layer)) as scope:
                 question, facts = self.generate_resaoner(question, facts)
-        answer = self.generate_decoder(question)
+        answer = self.generate_decoder(question, input_dimension[1])
         return inputs, answer
 
     def generate_rnn_layer(self, unit_size):
@@ -105,9 +88,14 @@ class MemNet():
         '''
         sentence_holder = []
         for _ in range(num_sentence):
-            with tf.variable_scope("fact_" + str(_)) as scope:
+            if _ == num_sentence -1:
+                scope_name = "question"
+            else:
+                scope_name = 'fact_' + str(_)
+            with tf.variable_scope(scope_name) as scope:
                 tmp = tf.placeholder(tf.float64, shape = input_shape)
                 layer = self.generate_rnn_layer(self.unit_size)
+                # TODO: adding sequence length here and compare
                 output, last_state = tf.nn.dynamic_rnn(
                                             cell = layer,
                                             dtype = tf.float64,
@@ -128,7 +116,7 @@ class MemNet():
         qs = []
         fs = []
         for idx, fact in enumerate(facts):
-            with tf.variable_scope('fact_' + str(idx)) as scope:
+            with tf.variable_scope('sentence_' + str(idx)) as scope:
                 q, f = self.generate_conv_layer(question, fact)
                 qs.append(q)
                 fs.append(f)
@@ -136,7 +124,7 @@ class MemNet():
         question = tf.nn.avg_pool(question, [1, 5, 1, 1], [1, 5, 1, 1], padding = 'SAME')
         return (question, fs)
 
-    def generate_decoder(self, content):
+    def generate_decoder(self, content, sentence_length):
         '''
             content is of shape
                 batch * content dimension * 1 * 1
@@ -145,9 +133,10 @@ class MemNet():
         content = tf.expand_dims(content[:, :, 0, 0], 1)
         # append null inputs until it reaches sentence length limit
         batch, _, content_length =  content.get_shape()
-        content = tf.concat(1, [content, tf.zeros([batch, 8, content_length], dtype = tf.float64)])
+        content = tf.concat(1, [content, tf.zeros([batch, sentence_length - 1, content_length], dtype = tf.float64)])
         # feed in rnn to get a sentence
         layer = self.generate_rnn_layer(1)
+        # TODO: adding seqeunce length here and compare
         output, last_state = tf.nn.dynamic_rnn(cell = layer,
                                                dtype = tf.float64,
                                                inputs = content)

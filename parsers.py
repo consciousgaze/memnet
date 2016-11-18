@@ -1,25 +1,54 @@
 '''
     these data parsing funcitons should return:
         word dictionaries
-        train and test data in word vector
+        train and test data in following format:
+            a dictionary of tensors of shape [batch * sentence_length * word_vector_length]
+                each tensor represents a factor, the last tensor is the question
+                the key is their sequence
+            a list of results
 '''
+
+import numpy as np
 
 #TODO: use vector representation for word instead of simple indexing
 def tokenize(w2i, data, label):
-    x = []
+    x = {}
     y = []
+    max_length = 0
+    # convert sentences to vectors
     for i in range(len(label)):
-        facts = []
-        for s in data[i]:
+        for idx , s in enumerate(data[i]):
             fact = []
             for word in s.split():
                 fact.append(w2i[word])
-            facts.append(fact)
-        x.append(facts)
+            fact.append(-1)
+            if idx in x:
+                x[idx].append(fact)
+            else:
+                x[idx] = [fact]
+            if len(fact) > max_length:
+                max_length = len(fact)
         answer = []
         for word in label[i].split():
             answer.append(w2i[word])
+        answer.append(-1)
         y.append(answer)
+
+    # pending shorter sentences with trailing 0s
+    for i in x:
+        facts = x[i]
+        for idx in range(len(facts)):
+            fact = facts[idx]
+            if len(fact) < max_length:
+                facts[idx] = fact + [0] * (max_length - len(fact))
+    rlt = []
+    for i in sorted(x.keys()):
+        rlt.append(x[i])
+
+    # numpy will remove the word_vect dimension since it is of length 1
+    # pending the dimension back
+    x = np.expand_dims(np.asarray(rlt), 3)
+    y = np.expand_dims(np.asarray(y), 2)
     return x, y
 
 def vocabulary(text):
@@ -27,8 +56,10 @@ def vocabulary(text):
     word_to_idx = {}
     idx_to_word = {}
     for idx, word in enumerate(words):
-        word_to_idx[word] = [idx]
-        idx_to_word[idx] = word
+        word_to_idx[word] = [idx + 1,]
+        idx_to_word[idx + 1] = word
+    word_to_idx[None] = -1
+    idx_to_word[-1] = None
     return word_to_idx, idx_to_word
 
 def parse_single_supporting_fact():
