@@ -13,17 +13,29 @@ def main():
     w2i, i2w, train, test = input_data_parser('en', '1k', 19)
     x, y = train
     sentence_num, batch_size, sentence_length, word_vector_size = x.shape
-    inputs, model = net.get_model(sentence_num - 1, [batch_size, sentence_length, word_vector_size])
+    answer_length = len(y[0])
+    inputs, model, inits = net.get_model(sentence_num - 1,
+                                         [batch_size, sentence_length, word_vector_size],
+                                         answer_length)
     with net.sess.as_default():
         with net.graph.as_default():
             feed = {}
             for idx in range(len(inputs)):
                 feed[inputs[idx]] = x[idx]
-                print inputs[idx], type(x[idx]), x[idx].shape
-            # print feed
+            loss = tf.nn.l2_loss(model - y)
+            optimizer = tf.train.AdamOptimizer(.1)
+            gvs = optimizer.compute_gradients(loss)
+            capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
+            step = optimizer.apply_gradients(capped_gvs)
             net.sess.run(tf.initialize_all_variables())
-            rlt = net.sess.run(model, feed_dict=feed)
-    print rlt.shape
+            for i in range(200):
+                for init in inits:
+                    net.sess.run(init)
+                net.sess.run(step, feed_dict=feed)
+                if i % 10 == 0:
+                    for init in inits:
+                        net.sess.run(init)
+                    print net.sess.run(loss, feed_dict = feed)
     return
 
 class MemNet():
@@ -42,6 +54,7 @@ class MemNet():
                 self.filter = tf.random_normal([3, 1, 1, 1], dtype = tf.float32)
         self.strides = [1, 1, 1, 1]
 
+
     def expand_sentence_tensor(self, sentence):
         '''
             convert sentence tensor to a 4D tensor that can be conved
@@ -51,18 +64,18 @@ class MemNet():
         rlt = tf.expand_dims(rlt, 3)
         return rlt
 
-    def get_model(self, fact_num, input_dimension):
+    def get_model(self, fact_num, input_dimension, answer_length):
         with self.sess.as_default():
             with self.graph.as_default():
-                return self.generate_model(fact_num, input_dimension)
+                return self.generate_model(fact_num, input_dimension, answer_length)
 
-    def generate_model(self, fact_num, input_dimension):
+    def generate_model(self, fact_num, input_dimension, answer_length):
         '''
             fact_num is the number of fact sentences
             input_dimension is:
                 batch * sentence_length * word vector size
         '''
-        encoder = self.generate_encoder(fact_num + 1, input_dimension)
+        encoder, inits = self.generate_encoder(fact_num + 1, input_dimension)
         inputs = []
         facts = []
         for idx, encodes in enumerate(encoder):
@@ -78,8 +91,9 @@ class MemNet():
         for layer in range(self.num_reasoning):
             with tf.variable_scope('reasoning_layer_' + str(layer)) as scope:
                 question, facts = self.generate_resaoner(question, facts)
-        answer = self.generate_decoder(question, input_dimension[1])
-        return inputs, answer
+        answer, init = self.generate_decoder(question, answer_length)
+        inits.append(init)
+        return inputs, answer, inits
 
     def generate_rnn_layer(self, unit_size):
         '''
@@ -97,6 +111,7 @@ class MemNet():
                 batch * sentence length * word vector length
         '''
         sentence_holder = []
+        init_state_holder = []
         for _ in range(num_sentence):
             if _ == num_sentence -1:
                 scope_name = "question"
@@ -113,7 +128,8 @@ class MemNet():
                                             )
                 # only the take the last output as the sentence representation
                 sentence_holder.append((output[:, -1, :], tmp))
-        return sentence_holder
+                init_state_holder.append(layer.zero_state(input_shape[0], tf.float32))
+        return sentence_holder, init_state_holder
 
     def generate_conv_layer(self, question, fact):
         feed = tf.concat(1, [question, fact])
@@ -150,7 +166,8 @@ class MemNet():
         output, last_state = tf.nn.dynamic_rnn(cell = layer,
                                                dtype = tf.float32,
                                                inputs = content)
-        return output
+        init = layer.zero_state(content.get_shape()[0], tf.float32)
+        return output, init
 
 if __name__ == '__main__':
     main()
