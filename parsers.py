@@ -56,7 +56,7 @@ def vocabulary(text):
     word_to_idx = {}
     idx_to_word = {}
     for idx, word in enumerate(words):
-        word_to_idx[word] = [idx + 1,]
+        word_to_idx[word] = idx + 1
         idx_to_word[idx + 1] = word
     word_to_idx[None] = -1
     idx_to_word[-1] = None

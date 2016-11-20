@@ -13,7 +13,17 @@ def main():
     w2i, i2w, train, test = input_data_parser('en', '1k', 19)
     x, y = train
     sentence_num, batch_size, sentence_length, word_vector_size = x.shape
-    print net.get_model(sentence_num - 1, [batch_size, sentence_length, word_vector_size])
+    inputs, model = net.get_model(sentence_num - 1, [batch_size, sentence_length, word_vector_size])
+    with net.sess.as_default():
+        with net.graph.as_default():
+            feed = {}
+            for idx in range(len(inputs)):
+                feed[inputs[idx]] = x[idx]
+                print inputs[idx], type(x[idx]), x[idx].shape
+            # print feed
+            net.sess.run(tf.initialize_all_variables())
+            rlt = net.sess.run(model, feed_dict=feed)
+    print rlt.shape
     return
 
 class MemNet():
@@ -29,7 +39,7 @@ class MemNet():
         # init params
         with self.sess.as_default():
             with self.graph.as_default():
-                self.filter = tf.random_normal([3, 1, 1, 1], dtype = tf.float64)
+                self.filter = tf.random_normal([3, 1, 1, 1], dtype = tf.float32)
         self.strides = [1, 1, 1, 1]
 
     def expand_sentence_tensor(self, sentence):
@@ -93,12 +103,12 @@ class MemNet():
             else:
                 scope_name = 'fact_' + str(_)
             with tf.variable_scope(scope_name) as scope:
-                tmp = tf.placeholder(tf.float64, shape = input_shape)
+                tmp = tf.placeholder(tf.float32, shape = input_shape)
                 layer = self.generate_rnn_layer(self.unit_size)
                 # TODO: adding sequence length here and compare
                 output, last_state = tf.nn.dynamic_rnn(
                                             cell = layer,
-                                            dtype = tf.float64,
+                                            dtype = tf.float32,
                                             inputs = tmp
                                             )
                 # only the take the last output as the sentence representation
@@ -133,12 +143,12 @@ class MemNet():
         content = tf.expand_dims(content[:, :, 0, 0], 1)
         # append null inputs until it reaches sentence length limit
         batch, _, content_length =  content.get_shape()
-        content = tf.concat(1, [content, tf.zeros([batch, sentence_length - 1, content_length], dtype = tf.float64)])
+        content = tf.concat(1, [content, tf.zeros([batch, sentence_length - 1, content_length], dtype = tf.float32)])
         # feed in rnn to get a sentence
         layer = self.generate_rnn_layer(1)
         # TODO: adding seqeunce length here and compare
         output, last_state = tf.nn.dynamic_rnn(cell = layer,
-                                               dtype = tf.float64,
+                                               dtype = tf.float32,
                                                inputs = content)
         return output
 
