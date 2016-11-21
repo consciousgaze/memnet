@@ -23,9 +23,9 @@ def main():
             for idx in range(len(inputs)):
                 feed[inputs[idx]] = x[idx]
             loss = tf.nn.l2_loss(model - y)
-            optimizer = tf.train.AdamOptimizer(.1)
+            optimizer = tf.train.AdamOptimizer(1)
             gvs = optimizer.compute_gradients(loss)
-            capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
+            capped_gvs = [(tf.clip_by_value(grad, -1e10, 1e10), var) for grad, var in gvs]
             step = optimizer.apply_gradients(capped_gvs)
             net.sess.run(tf.initialize_all_variables())
             for i in range(200):
@@ -100,7 +100,9 @@ class MemNet():
             rnn layer for encoder layer
         '''
         cell = tf.nn.rnn_cell.GRUCell(unit_size)
-        cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob = self.dropout)
+        # This is causing NaN loss. Similar issue happend before https://groups.google.com/forum/#!topic/keras-users/SAif-pNtY30
+        # But I still need to dive in later
+        # cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob = self.dropout)
         layer = tf.nn.rnn_cell.MultiRNNCell([cell] * self.depth_rnn)
         return layer
 
