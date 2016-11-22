@@ -2,8 +2,7 @@ import os
 from parsers import *
 
 data_base = 'data/tasks_1-20_v1-2/'
-
-SEN_STOP = '-1'
+word_vector_length = word_vector_dimension
 
 task_dict = {
               1: "single-supporting-fact",

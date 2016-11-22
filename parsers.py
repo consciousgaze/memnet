@@ -9,9 +9,13 @@
 '''
 
 import numpy as np
+import gensim
 
-#TODO: use vector representation for word instead of simple indexing
-def tokenize(w2i, data, label):
+word_vector_dimension = 10
+sentence_stop = np.ones(word_vector_dimension) * -1
+place_holder = np.zeros(word_vector_dimension)
+
+def tokenize(model, data, label):
     x = {}
     y = []
     max_length = 0
@@ -20,8 +24,8 @@ def tokenize(w2i, data, label):
         for idx , s in enumerate(data[i]):
             fact = []
             for word in s.split():
-                fact.append(w2i[word])
-            fact.append(-1)
+                fact.append(model[word])
+            fact.append(sentence_stop)
             if idx in x:
                 x[idx].append(fact)
             else:
@@ -30,8 +34,8 @@ def tokenize(w2i, data, label):
                 max_length = len(fact)
         answer = []
         for word in label[i].split():
-            answer.append(w2i[word])
-        answer.append(-1)
+            answer.append(model[word])
+        answer.append(sentence_stop)
         y.append(answer)
 
     # pending shorter sentences with trailing 0s
@@ -40,27 +44,21 @@ def tokenize(w2i, data, label):
         for idx in range(len(facts)):
             fact = facts[idx]
             if len(fact) < max_length:
-                facts[idx] = fact + [0] * (max_length - len(fact))
+                facts[idx] = fact + [place_holder for _ in range(max_length - len(fact))]
     rlt = []
     for i in sorted(x.keys()):
         rlt.append(x[i])
-
-    # numpy will remove the word_vect dimension since it is of length 1
-    # pending the dimension back
-    x = np.expand_dims(np.asarray(rlt), 3)
-    y = np.expand_dims(np.asarray(y), 2)
+    x = np.asarray(rlt)
+    y = np.asarray(y)
     return x, y
 
-def vocabulary(text):
-    words = set(text.split())
-    word_to_idx = {}
-    idx_to_word = {}
-    for idx, word in enumerate(words):
-        word_to_idx[word] = idx + 1
-        idx_to_word[idx + 1] = word
-    word_to_idx[None] = -1
-    idx_to_word[-1] = None
-    return word_to_idx, idx_to_word
+def vocabulary(sentences):
+    model = gensim.models.Word2Vec(sentences,
+                                   size=10,
+                                   window=5,
+                                   min_count=5,
+                                   workers=4)
+    return model
 
 def parse_single_supporting_fact():
      raise NotImplementedError("parse_single_supporting_fact is not implemented yet")
@@ -142,12 +140,12 @@ def parse_path_finding(path):
     train_y = []
     test_data = []
     test_y = []
-    all_text = ""
+    all_sentences = []
     tmp = []
     with open(train_file) as f:
         for l in f:
             l = l.strip().replace('.', ' . ').replace(',', ' , ').replace('?', ' ? ')
-            all_text += l + ' '
+            all_sentences.append(l.split())
             if l.startswith('6'):
                 qeustion, answer, _ = l.split('\t')
                 tmp.append(qeustion)
@@ -160,7 +158,7 @@ def parse_path_finding(path):
     with open(test_file) as f:
         for l in f:
             l = l.strip().replace('.', ' . ').replace(',', ' , ').replace('?', ' ? ')
-            all_text += l + ' '
+            all_sentences.append(l.split())
             if l.startswith('6'):
                 question, answer, _ = l.split('\t')
                 tmp.append(qeustion)
@@ -170,14 +168,14 @@ def parse_path_finding(path):
             else:
                 tmp.append(l)
 
-    word_to_idx, idx_to_word = vocabulary(all_text)
+    model = vocabulary(all_sentences)
 
-    x, y = tokenize(word_to_idx, train_data, train_y)
+    x, y = tokenize(model, train_data, train_y)
     train = (x, y)
-    x, y = tokenize(word_to_idx, test_data, test_y)
+    x, y = tokenize(model, test_data, test_y)
     test = (x, y)
 
-    return word_to_idx, idx_to_word, train, test
+    return model, train, test
 
 def parse_agents_motivations():
      raise NotImplementedError("parse_agents_motivations is not implemented yet")

@@ -10,7 +10,7 @@ from util import *
 
 def main():
     net = MemNet(10, 4, 20, 10, 0.3)
-    w2i, i2w, train, test = input_data_parser('en', '1k', 19)
+    vocab, train, test = input_data_parser('en', '1k', 19)
     x, y = train
     sentence_num, batch_size, sentence_length, word_vector_size = x.shape
     answer_length = len(y[0])
@@ -22,13 +22,31 @@ def main():
             feed = {}
             for idx in range(len(inputs)):
                 feed[inputs[idx]] = x[idx]
+
+            with open('pre_train.log', 'w') as f:
+                net.sess.run(tf.initialize_all_variables())
+                for init in inits:
+                    net.sess.run(init)
+
+                rlt = net.sess.run(model, feed_dict = feed)
+                for i in range(1000):
+                    f.write(str(rlt[i].T))
+                    f.write('\n')
+                    f.write(str(y[i].T))
+                    f.write('\n\n')
+
             loss = tf.nn.l2_loss(model - y)
-            optimizer = tf.train.AdamOptimizer(1)
-            gvs = optimizer.compute_gradients(loss)
-            capped_gvs = [(tf.clip_by_value(grad, -1e10, 1e10), var) for grad, var in gvs]
-            step = optimizer.apply_gradients(capped_gvs)
+            optimizer = tf.train.AdamOptimizer(.1)
+            vs = tf.trainable_variables()
+            gs = tf.gradients(loss, vs)
+            gs, _ = tf.clip_by_global_norm(gs, 1e5)
+            gvs = zip(gs, vs)
+            #gvs = optimizer.compute_gradients(loss)
+            #gvs = [(tf.clip_by_value(grad, -1e5, 1e5), var) for grad, var in gvs]
+            step = optimizer.apply_gradients(gvs)
+
             net.sess.run(tf.initialize_all_variables())
-            for i in range(200):
+            for i in range(10000):
                 for init in inits:
                     net.sess.run(init)
                 net.sess.run(step, feed_dict=feed)
@@ -36,6 +54,19 @@ def main():
                     for init in inits:
                         net.sess.run(init)
                     print net.sess.run(loss, feed_dict = feed)
+
+            with open('post_train.log', 'w') as f:
+                net.sess.run(tf.initialize_all_variables())
+                for init in inits:
+                    net.sess.run(init)
+
+                rlt = net.sess.run(model, feed_dict = feed)
+                for i in range(1000):
+                    f.write(str(rlt[i].T))
+                    f.write('\n')
+                    f.write(str(y[i].T))
+                    f.write('\n\n')
+
     return
 
 class MemNet():
@@ -163,7 +194,7 @@ class MemNet():
         batch, _, content_length =  content.get_shape()
         content = tf.concat(1, [content, tf.zeros([batch, sentence_length - 1, content_length], dtype = tf.float32)])
         # feed in rnn to get a sentence
-        layer = self.generate_rnn_layer(1)
+        layer = self.generate_rnn_layer(word_vector_length)
         # TODO: adding seqeunce length here and compare
         output, last_state = tf.nn.dynamic_rnn(cell = layer,
                                                dtype = tf.float32,
