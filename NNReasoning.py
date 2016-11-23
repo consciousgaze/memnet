@@ -9,14 +9,19 @@ from util import *
 
 
 def main():
-    net = MemNet(10, 4, 20, 10, 0.3)
-    vocab, train, test = input_data_parser('en', '1k', 19)
+    net = MemNet(3, 3, 50, 3, 0.3)
+    vocab, train, test = input_data_parser('en', '10k', 19)
     x, y = train
     sentence_num, batch_size, sentence_length, word_vector_size = x.shape
     answer_length = len(y[0])
     inputs, model, inits = net.get_model(sentence_num - 1,
                                          [batch_size, sentence_length, word_vector_size],
                                          answer_length)
+    def get_word(vects):
+        sentence = ""
+        for vect in vects:
+            sentence +=  vocab.similar_by_vector(vect, topn=1)[0][0] + ' '
+        return sentence
     with net.sess.as_default():
         with net.graph.as_default():
             feed = {}
@@ -30,16 +35,16 @@ def main():
 
                 rlt = net.sess.run(model, feed_dict = feed)
                 for i in range(1000):
-                    f.write(str(rlt[i].T))
+                    f.write(get_word(rlt[i]))
                     f.write('\n')
-                    f.write(str(y[i].T))
+                    f.write(get_word(y[i]))
                     f.write('\n\n')
 
             loss = tf.nn.l2_loss(model - y)
-            optimizer = tf.train.AdamOptimizer(.1)
+            optimizer = tf.train.AdamOptimizer(0.001)
             vs = tf.trainable_variables()
             gs = tf.gradients(loss, vs)
-            gs, _ = tf.clip_by_global_norm(gs, 1e5)
+            gs, _ = tf.clip_by_global_norm(gs, 10)
             gvs = zip(gs, vs)
             #gvs = optimizer.compute_gradients(loss)
             #gvs = [(tf.clip_by_value(grad, -1e5, 1e5), var) for grad, var in gvs]
@@ -50,10 +55,10 @@ def main():
                 for init in inits:
                     net.sess.run(init)
                 net.sess.run(step, feed_dict=feed)
-                if i % 10 == 0:
+                if i % 10 == 9:
                     for init in inits:
                         net.sess.run(init)
-                    print net.sess.run(loss, feed_dict = feed)
+                    print str(i).ljust(4), net.sess.run(loss, feed_dict = feed), np.sum(np.square(y))
 
             with open('post_train.log', 'w') as f:
                 net.sess.run(tf.initialize_all_variables())
@@ -62,9 +67,9 @@ def main():
 
                 rlt = net.sess.run(model, feed_dict = feed)
                 for i in range(1000):
-                    f.write(str(rlt[i].T))
+                    f.write(get_word(rlt[i]))
                     f.write('\n')
-                    f.write(str(y[i].T))
+                    f.write(get_word(y[i]))
                     f.write('\n\n')
 
     return
