@@ -28,23 +28,21 @@ def main():
             for idx in range(len(inputs)):
                 feed[inputs[idx]] = x[idx]
 
-            with open('pre_train.log', 'w') as f:
-                net.sess.run(tf.initialize_all_variables())
-                for init in inits:
-                    net.sess.run(init)
+            #with open('pre_train.log', 'w') as f:
+            #    net.sess.run(tf.initialize_all_variables())
+            #    for init in inits:
+            #        net.sess.run(init)
 
-                rlt = net.sess.run(model, feed_dict = feed)
-                for i in range(1000):
-                    f.write(get_word(rlt[i]))
-                    f.write('\n')
-                    f.write(get_word(y[i]))
-                    f.write('\n\n')
-
+            #    rlt = net.sess.run(model, feed_dict = feed)
+            #    for i in range(1000):
+            #        f.write(str(np.argmax(rlt[i])) + '\t')
+            #        f.write(str(np.argmax(y[i])))
+            #        f.write('\n\n')
             loss = tf.nn.l2_loss(model - y)
             optimizer = tf.train.AdamOptimizer(0.001)
             vs = tf.trainable_variables()
             gs = tf.gradients(loss, vs)
-            gs, _ = tf.clip_by_global_norm(gs, 10)
+            gs, _ = tf.clip_by_global_norm(gs, 1)
             gvs = zip(gs, vs)
             #gvs = optimizer.compute_gradients(loss)
             #gvs = [(tf.clip_by_value(grad, -1e5, 1e5), var) for grad, var in gvs]
@@ -58,18 +56,20 @@ def main():
                 if i % 10 == 9:
                     for init in inits:
                         net.sess.run(init)
-                    print str(i).ljust(4), net.sess.run(loss, feed_dict = feed), np.sum(np.square(y))
+                    print str(i).ljust(4), net.sess.run(loss, feed_dict = feed)
 
             with open('post_train.log', 'w') as f:
                 net.sess.run(tf.initialize_all_variables())
                 for init in inits:
                     net.sess.run(init)
-
+                x, y = test
+                feed = {}
+                for i in range(len(inputs)):
+                    feed[inputs[i]] = x[i]
                 rlt = net.sess.run(model, feed_dict = feed)
-                for i in range(1000):
-                    f.write(get_word(rlt[i]))
-                    f.write('\n')
-                    f.write(get_word(y[i]))
+                for i in range(len(y)):
+                    f.write(str(np.argmax(rlt[i])) + '\t')
+                    f.write(str(np.argmax(y[i])))
                     f.write('\n\n')
 
     return
@@ -127,8 +127,7 @@ class MemNet():
         for layer in range(self.num_reasoning):
             with tf.variable_scope('reasoning_layer_' + str(layer)) as scope:
                 question, facts = self.generate_resaoner(question, facts)
-        answer, init = self.generate_decoder(question, answer_length)
-        inits.append(init)
+        answer = self.generate_decoder(question, answer_length)
         return inputs, answer, inits
 
     def generate_rnn_layer(self, unit_size):
@@ -188,24 +187,21 @@ class MemNet():
         question = tf.nn.avg_pool(question, [1, 5, 1, 1], [1, 5, 1, 1], padding = 'SAME')
         return (question, fs)
 
-    def generate_decoder(self, content, sentence_length):
+    def generate_decoder(self, content, options):
         '''
             content is of shape
                 batch * content dimension * 1 * 1
         '''
-        # convert to shape batch * sequence * content dimension
+        # convert to shape batch * sequence
         content = tf.expand_dims(content[:, :, 0, 0], 1)
-        # append null inputs until it reaches sentence length limit
         batch, _, content_length =  content.get_shape()
-        content = tf.concat(1, [content, tf.zeros([batch, sentence_length - 1, content_length], dtype = tf.float32)])
-        # feed in rnn to get a sentence
-        layer = self.generate_rnn_layer(word_vector_length)
-        # TODO: adding seqeunce length here and compare
-        output, last_state = tf.nn.dynamic_rnn(cell = layer,
-                                               dtype = tf.float32,
-                                               inputs = content)
-        init = layer.zero_state(content.get_shape()[0], tf.float32)
-        return output, init
+        softmax_weight = tf.Variable(np.random.rand(batch, content_length, options), dtype = tf.float32)
+        softmax_bias = tf.ones([batch, 1, options], dtype = tf.float32)
+        output = tf.batch_matmul(content, softmax_weight)
+        output = tf.add(output, softmax_bias)
+        output = tf.nn.softmax(output)
+        output = tf.squeeze(output)
+        return output
 
 if __name__ == '__main__':
     main()

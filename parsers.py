@@ -170,9 +170,26 @@ def parse_path_finding(path):
 
     model = vocabulary(all_sentences)
 
+    def discretizing_answer(y):
+        rlts = []
+        y_ = []
+        for i in y:
+            seen = False
+            for idx, rlt in enumerate(rlts):
+                if np.array_equal(rlt, i):
+                    seen = True
+                    y_.append(idx)
+            if not seen:
+                y_.append(len(rlts))
+                rlts.append(i)
+        y = [[1 if j==i else 0 for j in range(len(rlts))] for i in y_]
+        return np.asarray(y)
+
     x, y = tokenize(model, train_data, train_y)
+    y = discretizing_answer(y)
     train = (x, y)
     x, y = tokenize(model, test_data, test_y)
+    y = discretizing_answer(y)
     test = (x, y)
 
     return model, train, test
