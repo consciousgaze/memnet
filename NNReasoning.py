@@ -9,68 +9,42 @@ from util import *
 
 
 def main():
-    net = MemNet(1, 3, 3, 50, 3, 0.3)
     vocab, train, test = input_data_parser('en', '10k', 19)
     x, y = train
     sentence_num, batch_size, sentence_length, word_vector_size = x.shape
     answer_length = len(y[0])
+    net = MemNet(batch_size, 3, 3, 50, 3, 0.9)
     train, test = net.get_model(sentence_num - 1,
-                                  [sentence_length, word_vector_size],
-                                  answer_length)
+                                [sentence_length, word_vector_size],
+                                answer_length)
     def get_word(vects):
         sentence = ""
         for vect in vects:
             sentence +=  vocab.similar_by_vector(vect, topn=1)[0][0] + ' '
         return sentence
     with tf.Session() as sess:
+        tf.global_variables_initializer().run()
         tf.summary.FileWriter('log', tf.get_default_graph())
-    #with net.sess.as_default():
-    #    with net.graph.as_default():
-    #        feed = {}
-    #        for idx in range(len(inputs)):
-    #            feed[inputs[idx]] = x[idx]
+        for epoch_idx in range(100000):
+            state = sess.run(net.init_state)
+            feed = {}
+            for idx in range(len(train.inputs)):
+                feed[train.inputs[idx]] = x[idx]
 
-    #        #with open('pre_train.log', 'w') as f:
-    #        #    net.sess.run(tf.initialize_all_variables())
-    #        #    for init in inits:
-    #        #        net.sess.run(init)
+            for idx, init_state in enumerate(net.init_state):
+                feed[init_state] = state[idx]
 
-    #        #    rlt = net.sess.run(model, feed_dict = feed)
-    #        #    for i in range(1000):
-    #        #        f.write(str(np.argmax(rlt[i])) + '\t')
-    #        #        f.write(str(np.argmax(y[i])))
-    #        #        f.write('\n\n')
-    #        loss = tf.nn.l2_loss(model - y)
-    #        optimizer = tf.train.AdamOptimizer(0.001)
-    #        vs = tf.trainable_variables()
-    #        gs = tf.gradients(loss, vs)
-    #        gs, _ = tf.clip_by_global_norm(gs, 1)
-    #        gvs = zip(gs, vs)
-    #        step = optimizer.apply_gradients(gvs)
-
-    #        net.sess.run(tf.initialize_all_variables())
-    #        for i in range(10000):
-    #            #for init in inits:
-    #            #    net.sess.run(init)
-    #            net.sess.run(step, feed_dict=feed)
-    #            if i % 10 == 9:
-    #                #for init in inits:
-    #                #    net.sess.run(init)
-    #                print str(i).ljust(4), net.sess.run(loss, feed_dict = feed)
-
-    #        with open('post_train.log', 'w') as f:
-    #            net.sess.run(tf.initialize_all_variables())
-    #            #for init in inits:
-    #            #    net.sess.run(init)
-    #            x, y = test
-    #            feed = {}
-    #            for i in range(len(inputs)):
-    #                feed[inputs[i]] = x[i]
-    #            rlt = net.sess.run(model, feed_dict = feed)
-    #            for i in range(len(y)):
-    #                f.write(str(np.argmax(rlt[i])) + '\t')
-    #                f.write(str(np.argmax(y[i])))
-    #                f.write('\n\n')
+            feed[train.y] = y
+            answer, loss, _ = sess.run(
+                [train.anwser, train.loss, train.train_op], feed_dict=feed)
+            hit = 0
+            for idx, i in enumerate(answer):
+                p, p_  =  np.argmax(i), np.argmax(y[idx])
+                if p == p_:
+                    hit += 1
+            print hit * 1./idx, loss
+        tf.scalar_summary('loss', loss)
+        tf.scalar_summary('hit', hit)
 
     return
 
@@ -88,7 +62,7 @@ class MemNet():
         self.batch_size = batch_size
 
         # init params
-        self.filter = tf.random_normal([3, 1, 1, 1], dtype = tf.float32)
+        self.filter = tf.random_normal([100, 1, 1, 1], dtype = tf.float32)
         self.strides = [1, 1, 1, 1]
         self.encode_steps = 10
 
@@ -109,10 +83,16 @@ class MemNet():
         test = self.Model()
         with tf.name_scope('Train'):
             with tf.variable_scope('Model'):
-                train.inputs, train.anwser, train.y, train.train_op = self.generate_model(fact_num, input_dimension, answer_length, train = True)
+                (train.inputs,
+                 train.anwser,
+                 train.y,
+                 train.train_op,
+                 train.loss)= self.generate_model(
+                     fact_num, input_dimension, answer_length, train = True)
         with tf.name_scope('Test'):
             with tf.variable_scope('Model', reuse = True):
-                test.inputs, test.anwser, _, _ = self.generate_model(fact_num, input_dimension, answer_length, train = False)
+                test.inputs, test.anwser, _, _, test.loss = self.generate_model(
+                    fact_num, input_dimension, answer_length, train = False)
         self.train = train
         self.test = test
         return self.train, self.test
@@ -140,28 +120,31 @@ class MemNet():
             with tf.variable_scope('reasoning_layer_' + str(layer)) as scope:
                 question, facts = self.generate_resaoner(question, facts)
         anwser = self.generate_decoder(question, answer_length)
-        train_op = tf.no_op()
-        target = 1
         if train:
-            #with open('pre_train.log', 'w') as f:
-            #    net.sess.run(tf.initialize_all_variables())
-            #    for init in inits:
-            #        net.sess.run(init)
-
-            #    rlt = net.sess.run(model, feed_dict = feed)
-            #    for i in range(1000):
-            #        f.write(str(np.argmax(rlt[i])) + '\t')
-            #        f.write(str(np.argmax(y[i])))
-            #        f.write('\n\n')
             target = tf.placeholder(tf.float32, shape = anwser.get_shape())
-            loss = tf.nn.l2_loss(anwser - target)
-            optimizer = tf.train.AdamOptimizer(0.001)
+            loss = tf.nn.softmax_cross_entropy_with_logits(anwser, target)
+            loss = tf.reduce_mean(loss)
+            # for v in tf.trainable_variables():
+            #     loss += tf.nn.l2_loss(v)
+            # loss = 0.
+            # labels = tf.cast(tf.argmax(target, axis=1), tf.int32)
+            # l = anwser.get_shape()[0]
+            # classes = anwser.get_shape()[1]
+            # for i in range(l):
+            #     for j in range(classes):
+            #         loss += tf.maximum(0., anwser[i, j] - anwser[i, labels[i]] + 1.)
+            optimizer = tf.train.GradientDescentOptimizer(1e-9)
             vs = tf.trainable_variables()
             gs = tf.gradients(loss, vs)
             gs, _ = tf.clip_by_global_norm(gs, 1)
             gvs = zip(gs, vs)
-            train_op = optimizer.apply_gradients(gvs)
-        return inputs, anwser, target, train_op
+            train_op = optimizer.apply_gradients(gvs, global_step=tf.contrib.framework.get_or_create_global_step())
+        else:
+            train_op = tf.no_op()
+            target = 1
+            loss = 1
+
+        return inputs, anwser, target, train_op, loss
 
     def generate_rnn_layer(self, unit_size, train):
         '''
@@ -170,7 +153,8 @@ class MemNet():
         cell = tf.nn.rnn_cell.GRUCell(unit_size)
         if train:
             cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob = self.dropout)
-        layer = tf.nn.rnn_cell.MultiRNNCell([cell] * self.depth_rnn, state_is_tuple = True)
+        layer = tf.nn.rnn_cell.MultiRNNCell(
+            [cell] * self.depth_rnn, state_is_tuple = True)
         state = layer.zero_state(self.batch_size, tf.float32)
         self.init_state.append(state)
         return state, layer
@@ -189,9 +173,11 @@ class MemNet():
             else:
                 scope_name = 'fact_' + str(_)
             with tf.variable_scope(scope_name) as scope:
-                tmp = tf.placeholder(tf.float32, shape = [self.batch_size, input_shape[0], input_shape[1]])
+                tmp = tf.placeholder(
+                    tf.float32,
+                    shape = [self.batch_size, input_shape[0], input_shape[1]])
                 state, layer = self.generate_rnn_layer(self.unit_size, train)
-                for step in range(self.encode_steps):
+                for step in range(input_shape[0]):
                     if step > 0:
                         tf.get_variable_scope().reuse_variables()
                     output, state = layer(tmp[:, step, :], state)
@@ -203,7 +189,9 @@ class MemNet():
         feed = tf.concat(1, [question, fact])
         for i in range(self.depth_cnn):
             with tf.variable_scope('depth_' + str(i)) as scope:
-                feed = tf.nn.conv2d(feed, filter = self.filter, strides = self.strides, padding = 'SAME')
+                feed = tf.nn.conv2d(
+                    feed, filter = self.filter, strides = self.strides, padding = 'SAME')
+                feed = tf.nn.relu(feed)
         return tf.split(1, 2, feed)
 
     def generate_resaoner(self, question, facts):
@@ -215,7 +203,7 @@ class MemNet():
                 qs.append(q)
                 fs.append(f)
         question = tf.concat(1, qs)
-        question = tf.nn.avg_pool(question, [1, 5, 1, 1], [1, 5, 1, 1], padding = 'SAME')
+        question = tf.nn.max_pool(question, [1, 5, 1, 1], [1, 5, 1, 1], padding = 'SAME')
         return (question, fs)
 
     def generate_decoder(self, content, options):
@@ -231,6 +219,7 @@ class MemNet():
         output = tf.batch_matmul(content, softmax_w)
         output = tf.add(output, softmax_b)
         output = tf.nn.softmax(output)
+        output = tf.nn.relu(output)
         return output
 
 if __name__ == '__main__':
